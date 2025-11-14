@@ -1,44 +1,32 @@
 import pandas as pd
-import os
+import re
 
-STORAGE_PATH = "master_list.csv"
-
-def load_master():
-    try:
-        if not os.path.exists(STORAGE_PATH):
-            return pd.DataFrame(columns=["아이디", "전화번호"])
-
-        df = pd.read_csv(STORAGE_PATH, dtype=str)
-
-        if df.empty:
-            return pd.DataFrame(columns=["아이디", "전화번호"])
-
-        return df
-    except:
-        return pd.DataFrame(columns=["아이디", "전화번호"])
-
-def clean_phone(x):
-    if pd.isna(x):
+# 전화번호 추출 함수
+def extract_phone(text):
+    if pd.isna(text):
         return None
-    # 숫자만 추출
-    digits = re.sub(r"[^0-9]", "", str(x))
-    if len(digits) == 11 and digits.startswith("010"):
-        return digits
+    pattern = r'(01[016789])[-\s\.\)]?(\d{3,4})[-\s\.\(]?(\d{4})'
+    match = re.search(pattern, str(text))
+    if match:
+        return f"{match.group(1)}{match.group(2)}{match.group(3)}"
     return None
 
-def update_master(excel_df, master_df):
-    # 전화번호 정제
-    excel_df["전화번호_B"] = excel_df.iloc[:, 1].apply(clean_phone)
-    excel_df["전화번호_D"] = excel_df.iloc[:, 3].apply(clean_phone)
+# 메인 처리 함수
+def update_master(excel_df, optimal_df):
+    # A열(Blogger ID)
+    excel_df['블로그ID'] = excel_df.iloc[:, 0]
 
-    excel_df["전화번호"] = excel_df["전화번호_B"].combine_first(excel_df["전화번호_D"])
-    today_df = excel_df[["아이디", "전화번호"]]
+    # B열 + D열에서 전화번호 추출
+    excel_df['전화번호'] = excel_df.iloc[:, 1].astype(str) + " " + excel_df.iloc[:, 3].astype(str)
+    excel_df['전화번호'] = excel_df['전화번호'].apply(extract_phone)
 
-    today_df = today_df.dropna(subset=["전화번호"])
-    today_df = today_df[~today_df["아이디"].isin(master_df["아이디"])]
+    # 전화번호 없는 행 제거
+    excel_df = excel_df.dropna(subset=['전화번호'])
 
-    master_df = pd.concat([master_df, today_df], ignore_index=True)
-    master_df.to_csv(STORAGE_PATH, index=False)
+    # 중복 제거 (전화번호 기준)
+    excel_df = excel_df.drop_duplicates(subset=['전화번호'], keep='first')
 
-    return master_df, today_df
+    # 필요한 컬럼만 반환
+    result_df = excel_df[['블로그ID', '전화번호']]
 
+    return result_df, excel_df, optimal_df
