@@ -1,34 +1,32 @@
-import streamlit as st
 import pandas as pd
-from processor import update_master   # load_master 제거
+import re
 
-st.set_page_config(page_title="윌메이드 필터링 자동화", layout="wide")
+def extract_phone(text):
+    phones = re.findall(r'01[016789]-?\d{3,4}-?\d{4}', str(text))
+    return phones[0] if phones else None
 
-st.title("📦 윌메이드 필터링 자동화")
+def update_master(excel_df, optimal_df, master_df):
+    # 엑셀 데이터에서 필요한 A,B,D 컬럼만 사용
+    excel_df = excel_df.iloc[:, [0,1,3]]
+    excel_df.columns = ["블로그ID", "제목", "본문"]
 
-st.subheader("📁 1) 파일 업로드")
+    # 전화번호 추출
+    excel_df["전화번호"] = excel_df["본문"].apply(extract_phone)
 
-uploaded_excel = st.file_uploader("엑셀 파일 업로드 (xlsx)", type=["xlsx"])
-uploaded_optimal = st.file_uploader("최적 리스트 업로드 (txt, csv)", type=["txt", "csv"])
+    # 전화번호 없는 행 제거
+    excel_df = excel_df.dropna(subset=["전화번호"])
 
-if st.button("필터링 실행"):
-    if uploaded_excel is None or uploaded_optimal is None:
-        st.error("두 개의 파일 모두 업로드 해주세요.")
+    # 중복 제거 (ID 기준)
+    excel_df = excel_df.drop_duplicates(subset=["블로그ID"])
+
+    # 최적리스트 ID 매칭
+    selected_df = excel_df[excel_df["블로그ID"].isin(optimal_df["블로그ID"])][["블로그ID", "전화번호"]]
+
+    # 누적 리스트 저장 (session master_df + selected_df)
+    if master_df is None:
+        master_df = selected_df
     else:
-        excel_df = pd.read_excel(uploaded_excel)
-        optimal_df = pd.read_csv(uploaded_optimal, header=None, names=["블로그ID"])
+        master_df = pd.concat([master_df, selected_df])
+        master_df = master_df.drop_duplicates(subset=["블로그ID"]).reset_index(drop=True)
 
-        master_df, today_excel_df, selected_df = update_master(excel_df, optimal_df)
-
-        st.success("필터링 완료 ✔")
-
-        # --- 화면 2분할 표시 ---
-        left, right = st.columns(2)
-
-        with left:
-            st.subheader("📊 오늘 업로드된 엑셀 결과")
-            st.dataframe(today_excel_df, use_container_width=True)
-
-        with right:
-            st.subheader("📌 최종 누적 리스트 (중복 제거 자동)")
-            st.dataframe(master_df, use_container_width=True)
+    return master_df, excel_df, selected_df
