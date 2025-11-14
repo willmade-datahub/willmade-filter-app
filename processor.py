@@ -1,32 +1,48 @@
 import pandas as pd
 import re
+import os
 
-# 전화번호 추출 함수
-def extract_phone(text):
+STORAGE_PATH = "master_list.csv"
+
+def clean_phone(text):
     if pd.isna(text):
-        return None
-    pattern = r'(01[016789])[-\s\.\)]?(\d{3,4})[-\s\.\(]?(\d{4})'
-    match = re.search(pattern, str(text))
-    if match:
-        return f"{match.group(1)}{match.group(2)}{match.group(3)}"
-    return None
+        return ""
+    text = str(text)
+    text = re.sub(r"[^0-9]", "", text)
+    if text.startswith("82"):
+        text = "0" + text[2:]
+    if len(text) == 10:
+        text = text[:3] + text[3:6] + text[6:]
+    if len(text) != 11:
+        return ""
+    return text
 
-# 메인 처리 함수
+def load_master():
+    if os.path.exists(STORAGE_PATH):
+        return pd.read_csv(STORAGE_PATH)
+    else:
+        return pd.DataFrame(columns=["블로그ID", "전화번호"])
+
 def update_master(excel_df, optimal_df):
-    # A열(Blogger ID)
-    excel_df['블로그ID'] = excel_df.iloc[:, 0]
+    excel_df["전화번호"] = excel_df.apply(
+        lambda row: clean_phone(str(row.iloc[1]) + str(row.iloc[3])), axis=1
+    )
+    excel_df = excel_df.rename(columns={excel_df.columns[0]: "블로그ID"})
+    excel_df = excel_df[["블로그ID", "전화번호"]]
 
-    # B열 + D열에서 전화번호 추출
-    excel_df['전화번호'] = excel_df.iloc[:, 1].astype(str) + " " + excel_df.iloc[:, 3].astype(str)
-    excel_df['전화번호'] = excel_df['전화번호'].apply(extract_phone)
+    # ID 기준 완전일치 중복 제거
+    excel_df = excel_df.drop_duplicates(subset=["블로그ID"], keep="first")
 
-    # 전화번호 없는 행 제거
-    excel_df = excel_df.dropna(subset=['전화번호'])
+    # 최적리스트에서 ID만 남기기
+    selected_df = excel_df[excel_df["블로그ID"].isin(optimal_df["블로그ID"])]
 
-    # 중복 제거 (전화번호 기준)
-    excel_df = excel_df.drop_duplicates(subset=['전화번호'], keep='first')
+    # 기존 저장파일 불러오기
+    master_df = load_master()
 
-    # 필요한 컬럼만 반환
-    result_df = excel_df[['블로그ID', '전화번호']]
+    # 합치기 + 중복 제거
+    master_df = pd.concat([master_df, selected_df], ignore_index=True).drop_duplicates(
+        subset=["블로그ID"], keep="first"
+    )
 
-    return result_df, excel_df, optimal_df
+    master_df.to_csv(STORAGE_PATH, index=False)
+    return master_df, excel_df, selected_df
