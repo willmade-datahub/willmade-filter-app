@@ -82,10 +82,15 @@ def clean_phone(text: str) -> str:
 def load_master() -> pd.DataFrame:
     """저장된 누적 리스트를 불러오기. 없으면 빈 DF."""
     if os.path.exists(STORAGE_PATH):
-        return pd.read_csv(STORAGE_PATH, dtype=str)
+        try:
+            df = pd.read_csv(STORAGE_PATH, dtype=str)
+            if df.empty:
+                return pd.DataFrame(columns=["아이디", "전화번호"])
+            return df
+        except:
+            return pd.DataFrame(columns=["아이디", "전화번호"])
     else:
         return pd.DataFrame(columns=["아이디", "전화번호"])
-
 
 def save_master(df: pd.DataFrame) -> None:
     """누적 리스트를 CSV로 저장."""
@@ -143,3 +148,4 @@ def update_master(excel_df: pd.DataFrame, master_df: pd.DataFrame):
 
     # new_master = 전체 누적, today_df = 이번에 올린 엑셀에서 뽑힌 것만
     return new_master, today_df
+
