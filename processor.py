@@ -1,10 +1,21 @@
 import pandas as pd
-import re
+import os
 
-STORAGE_PATH = "storagemaster_list.csv"
+STORAGE_PATH = "master_list.csv"
 
 def load_master():
-    return pd.read_csv(STORAGE_PATH, dtype=str)
+    try:
+        if not os.path.exists(STORAGE_PATH):
+            return pd.DataFrame(columns=["아이디", "전화번호"])
+
+        df = pd.read_csv(STORAGE_PATH, dtype=str)
+
+        if df.empty:
+            return pd.DataFrame(columns=["아이디", "전화번호"])
+
+        return df
+    except:
+        return pd.DataFrame(columns=["아이디", "전화번호"])
 
 def clean_phone(x):
     if pd.isna(x):
@@ -30,3 +41,4 @@ def update_master(excel_df, master_df):
     master_df.to_csv(STORAGE_PATH, index=False)
 
     return master_df, today_df
+
