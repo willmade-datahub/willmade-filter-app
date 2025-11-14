@@ -6,12 +6,16 @@ STORAGE_PATH = Path("storagemaster_list.csv")
 
 
 def load_master() -> pd.DataFrame:
-    """누적 마스터 리스트 로드 (없으면 빈 데이터프레임 생성)"""
     if STORAGE_PATH.exists():
-        return pd.read_csv(STORAGE_PATH, dtype=str)
+        try:
+            df = pd.read_csv(STORAGE_PATH, dtype=str)
+            if df.empty:
+                return pd.DataFrame(columns=["블로그ID", "전화번호"])
+            return df
+        except:
+            return pd.DataFrame(columns=["블로그ID", "전화번호"])
     else:
         return pd.DataFrame(columns=["블로그ID", "전화번호"])
-
 
 def _extract_phone(text: str) -> str:
     """
@@ -86,3 +90,4 @@ def update_master(excel_df: pd.DataFrame,
     combined.to_csv(STORAGE_PATH, index=False, encoding="utf-8-sig")
 
     return combined, excel_clean_df, selected_df
+
