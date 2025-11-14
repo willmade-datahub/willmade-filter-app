@@ -1,32 +1,32 @@
 import pandas as pd
 import re
 
-# 전화번호 추출 함수
 def extract_phone(text):
-    if pd.isna(text):
-        return None
-    pattern = r'(01[016789])[-\s\.\)]?(\d{3,4})[-\s\.\(]?(\d{4})'
-    match = re.search(pattern, str(text))
-    if match:
-        return f"{match.group(1)}{match.group(2)}{match.group(3)}"
-    return None
+    phones = re.findall(r'01[016789]-?\d{3,4}-?\d{4}', str(text))
+    return phones[0] if phones else None
 
-# 메인 처리 함수
-def update_master(excel_df, optimal_df):
-    # A열(Blogger ID)
-    excel_df['블로그ID'] = excel_df.iloc[:, 0]
+def update_master(excel_df, optimal_df, master_df):
+    # 엑셀 데이터에서 필요한 A,B,D 컬럼만 사용
+    excel_df = excel_df.iloc[:, [0,1,3]]
+    excel_df.columns = ["블로그ID", "제목", "본문"]
 
-    # B열 + D열에서 전화번호 추출
-    excel_df['전화번호'] = excel_df.iloc[:, 1].astype(str) + " " + excel_df.iloc[:, 3].astype(str)
-    excel_df['전화번호'] = excel_df['전화번호'].apply(extract_phone)
+    # 전화번호 추출
+    excel_df["전화번호"] = excel_df["본문"].apply(extract_phone)
 
     # 전화번호 없는 행 제거
-    excel_df = excel_df.dropna(subset=['전화번호'])
+    excel_df = excel_df.dropna(subset=["전화번호"])
 
-    # 중복 제거 (전화번호 기준)
-    excel_df = excel_df.drop_duplicates(subset=['전화번호'], keep='first')
+    # 중복 제거 (ID 기준)
+    excel_df = excel_df.drop_duplicates(subset=["블로그ID"])
 
-    # 필요한 컬럼만 반환
-    result_df = excel_df[['블로그ID', '전화번호']]
+    # 최적리스트 ID 매칭
+    selected_df = excel_df[excel_df["블로그ID"].isin(optimal_df["블로그ID"])][["블로그ID", "전화번호"]]
 
-    return result_df, excel_df, optimal_df
+    # 누적 리스트 저장 (session master_df + selected_df)
+    if master_df is None:
+        master_df = selected_df
+    else:
+        master_df = pd.concat([master_df, selected_df])
+        master_df = master_df.drop_duplicates(subset=["블로그ID"]).reset_index(drop=True)
+
+    return master_df, excel_df, selected_df
