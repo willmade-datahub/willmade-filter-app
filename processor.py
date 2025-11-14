@@ -1,32 +1,23 @@
-import pandas as pd
-import re
+def update_master(excel_df, optimal_df):
+    excel_df = excel_df.rename(columns={
+        excel_df.columns[0]: "블로그ID",
+        excel_df.columns[1]: "제목",
+        excel_df.columns[3]: "전화번호"
+    })
 
-def extract_phone(text):
-    phones = re.findall(r'01[016789]-?\d{3,4}-?\d{4}', str(text))
-    return phones[0] if phones else None
+    # 문자열 원본 그대로 유지
+    excel_df["블로그ID"] = excel_df["블로그ID"].astype(str)
 
-def update_master(excel_df, optimal_df, master_df):
-    # 엑셀 데이터에서 필요한 A,B,D 컬럼만 사용
-    excel_df = excel_df.iloc[:, [0,1,3]]
-    excel_df.columns = ["블로그ID", "제목", "본문"]
+    # master 파일 로드
+    master_df = load_master()
 
-    # 전화번호 추출
-    excel_df["전화번호"] = excel_df["본문"].apply(extract_phone)
+    # merge
+    combined_df = pd.concat([master_df, excel_df], ignore_index=True)
 
-    # 전화번호 없는 행 제거
-    excel_df = excel_df.dropna(subset=["전화번호"])
+    # 완전히 동일한 문자열만 중복 제거
+    combined_df = combined_df.drop_duplicates(subset=["블로그ID"], keep="first")
 
-    # 중복 제거 (ID 기준)
-    excel_df = excel_df.drop_duplicates(subset=["블로그ID"])
+    # 저장
+    combined_df.to_csv("master_storage.csv", index=False, encoding="utf-8-sig")
 
-    # 최적리스트 ID 매칭
-    selected_df = excel_df[excel_df["블로그ID"].isin(optimal_df["블로그ID"])][["블로그ID", "전화번호"]]
-
-    # 누적 리스트 저장 (session master_df + selected_df)
-    if master_df is None:
-        master_df = selected_df
-    else:
-        master_df = pd.concat([master_df, selected_df])
-        master_df = master_df.drop_duplicates(subset=["블로그ID"]).reset_index(drop=True)
-
-    return master_df, excel_df, selected_df
+    return combined_df, excel_df
