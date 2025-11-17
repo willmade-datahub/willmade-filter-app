@@ -1,72 +1,79 @@
 import pandas as pd
 import re
 
-# ===========================
-# 한글 / 영문 → 숫자 변환 매핑
-# ===========================
-KOR_ENG_MAP = str.maketrans({
+# ==========================
+# 전화번호 문자 → 숫자 변환 매핑
+# ==========================
+CHAR_MAP = {
     '공': '0', '영': '0',
     '일': '1', '이': '2', '삼': '3', '사': '4',
     '오': '5', '육': '6', '륙': '6', '칠': '7', '팔': '8', '구': '9',
-
     'o': '0', 'O': '0',
     'l': '1', 'I': '1', 'i': '1',
     'Z': '2',
     'S': '5', 's': '5',
     'B': '8'
-})
+}
 
-
-# ===========================
-# 전화번호 정제 + 추출 함수
-# ===========================
-def extract_phone(text):
-    if not text:
+def normalize_phone(text):
+    if not isinstance(text, str):
         return None
 
-    # 문자 → 숫자 변환
-    converted = text.translate(KOR_ENG_MAP)
+    clean = "".join(CHAR_MAP.get(ch, ch) for ch in text)
+    clean = re.sub(r"[^0-9]", "", clean)
 
-    # 줄바꿈 / 탭 / 특수문자 정리
-    converted = converted.replace("\n", " ").replace("\r", " ").replace("\t", " ")
-
-    # 숫자, 공백 제외하고 제거 (011-565-0701 / 010 5652 0701 등)
-    converted = re.sub(r'[^0-9 ]', ' ', converted)
-
-    # 다중 공백 하나로
-    converted = re.sub(r'\s+', ' ', converted)
-
-    # 패턴 검출
-    pattern = r'(01[016789])\s*([0-9]{3,4})\s*([0-9]{4})'
-    match = re.search(pattern, converted)
-
+    # 010xxxxxxxx 형식 추출
+    match = re.search(r"(01[016789]\d{7,8})", clean)
     if match:
-        return f"{match.group(1)}-{match.group(2)}-{match.group(3)}"
+        number = match.group(1)
+        if len(number) == 10:
+            return f"{number[:3]}-{number[3:6]}-{number[6:]}"
+        elif len(number) == 11:
+            return f"{number[:3]}-{number[3:7]}-{number[7:]}"
     return None
 
 
-# ===========================
-# 엑셀 파일 처리
-# ===========================
+# ==========================
+# 엑셀 처리 함수
+# ==========================
 def process_excel(file):
-    df = pd.read_excel(file)
-
+    df = pd.read_excel(file, dtype=str).fillna("")
     result = []
-    for idx, row in df.iterrows():
-        user_id = str(row.iloc[0]).strip()  # A열 (아이디)
-        # B열, D열에서 전화번호 추출
-        phone1 = extract_phone(str(row.iloc[1])) if len(row) > 1 else None
-        phone2 = extract_phone(str(row.iloc[3])) if len(row) > 3 else None
 
-        phone = phone1 if phone1 else phone2
+    for _, row in df.iterrows():
+        user_id = row.iloc[0]
+        phone_candidates = [row.iloc[1], row.iloc[3]]  # B열, D열
+
+        phone = None
+        for p in phone_candidates:
+            phone = normalize_phone(p)
+            if phone:
+                break
+
         result.append({"아이디": user_id, "전화번호": phone})
 
     return pd.DataFrame(result)
 
 
-# ===========================
-# 텍스트 파일(최적리스트) 처리
-# ===========================
+# ==========================
+# 최적 리스트 TXT 처리
+# ==========================
 def process_text(file):
-    lines = file.read().decode('utf-8', errors='ignore').splitlines()
-    return pd.DataFrame({"아이디": [line.strip() for line in lines if line.strip()]})
+    lines = file.read().decode("utf-8", "ignore").splitlines()
+    return pd.DataFrame({"아이디": list(set(line.strip() for line in lines if line.strip()))})
+
+
+# ==========================
+# 매칭
+# ==========================
+def match_lists(excel_df, best_df):
+    excel_ids = set(excel_df["아이디"].unique())
+    matched_rows = []
+
+    for _, row in best_df.iterrows():
+        if row["아이디"] in excel_ids:
+            excel_match = excel_df[excel_df["아이디"] == row["아이디"]]
+            phone = excel_match.iloc[0]["전화번호"]
+            matched_rows.append({"아이디": row["아이디"], "전화번호": phone, "메모": None})
+
+    return pd.DataFrame(matched_rows)
