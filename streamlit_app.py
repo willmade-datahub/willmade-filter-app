@@ -1,21 +1,22 @@
 import streamlit as st
 import pandas as pd
 from processor import process_excel, process_text, match_lists
+from db import init_db, save_matched, load_matched, clear_db
+
+init_db()
 
 st.set_page_config(page_title="윌메이드 필터링 자동화", layout="wide")
 st.title("📦 윌메이드 필터링 자동화 v2")
+
 
 if "excel_df" not in st.session_state:
     st.session_state.excel_df = pd.DataFrame()
 if "best_df" not in st.session_state:
     st.session_state.best_df = pd.DataFrame()
-if "matched_df" not in st.session_state:
-    st.session_state.matched_df = pd.DataFrame()
 
 st.subheader("📁 1) 파일 업로드")
 
 col1, col2 = st.columns(2)
-
 with col1:
     excel_file = st.file_uploader("엑셀 파일 업로드 (xlsx)", type=["xlsx"])
 with col2:
@@ -27,14 +28,11 @@ if st.button("🔍 필터링 실행"):
     if best_file:
         st.session_state.best_df = process_text(best_file)
 
-    st.session_state.matched_df = match_lists(st.session_state.excel_df, st.session_state.best_df)
+    matched_df = match_lists(st.session_state.excel_df, st.session_state.best_df)
+    save_matched(matched_df)
+    st.success("✔ 필터링 완료")
 
-    st.success("✔ 필터링 완료!")
 
-
-# =====================================================
-# 결과 UI
-# =====================================================
 st.subheader("📚 2) 누적 리스트 관리")
 left, right = st.columns(2)
 
@@ -44,12 +42,9 @@ with left:
 
 with right:
     st.markdown("### 🎯 최적 매칭 누적 리스트")
-    if not st.session_state.matched_df.empty:
-        st.session_state.matched_df["메모"] = ""
-    st.dataframe(st.session_state.matched_df, use_container_width=True)
+    matched_db = load_matched()
+    st.dataframe(matched_db, use_container_width=True)
 
 if st.button("🗑 전체 데이터 초기화"):
-    st.session_state.excel_df = pd.DataFrame()
-    st.session_state.best_df = pd.DataFrame()
-    st.session_state.matched_df = pd.DataFrame()
-    st.warning("⚠ 전체 데이터 초기화 완료")
+    clear_db()
+    st.warning("⚠ DB 초기화 완료")
