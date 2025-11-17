@@ -1,61 +1,70 @@
 import streamlit as st
 import pandas as pd
-from processor import run_filtering, load_cumulative, reset_all, EXCEL_MASTER_PATH, FILTERED_MASTER_PATH
+import os
+from processor import process_excel, match_lists
 
-st.set_page_config(page_title="윌메이드 필터링 자동화 v2", layout="wide")
+st.set_page_config(page_title="윌메이드 필터링 자동화", layout="wide")
 
 st.title("📦 윌메이드 필터링 자동화 v2")
 
-# ------------------ 업로드 -------------------
-st.subheader("📁 1) 파일 업로드")
+st.write("엑셀 + 최적리스트 업로드 후, 왼쪽/오른쪽 누적 리스트를 관리합니다.")
+
+uploaded_excel = None
+uploaded_optimal = None
+
 col1, col2 = st.columns(2)
 
 with col1:
-    excel_file = st.file_uploader("엑셀 파일 업로드 (xlsx)", type=["xlsx"])
+    st.subheader("📁 1) 파일 업로드")
+    uploaded_excel = st.file_uploader("엑셀 파일 업로드", type=["xlsx"])
 with col2:
-    best_file = st.file_uploader("최적 리스트 업로드 (txt/csv)", type=["txt", "csv"])
+    uploaded_optimal = st.file_uploader("최적 리스트 업로드", type=["txt", "csv"])
 
-run_btn = st.button("🚀 필터링 실행", type="primary")
-reset_btn = st.button("🗑 전체 초기화", type="secondary")
+if st.button("🔍 필터링 실행") and uploaded_excel is not None and uploaded_optimal is not None:
+    df_excel = pd.read_excel(uploaded_excel, engine="openpyxl")
+    df_excel = process_excel(df_excel)
 
-if reset_btn:
-    reset_all()
-    st.success("전체 누적 데이터 초기화 완료")
-    st.experimental_rerun()
+    optimal_ids = []
+    for line in uploaded_optimal.read().decode("utf-8").splitlines():
+        optimal_ids.append(line.strip())
 
-if run_btn:
-    if not excel_file or not best_file:
-        st.warning("두 파일 모두 업로드해주세요.")
-    else:
-        with st.spinner("처리 중..."):
-            excel_master, filtered_master = run_filtering(excel_file, best_file)
-        st.success("필터링 완료 🎉")
+    df_match = match_lists(df_excel, optimal_ids)
 
-# ------------------ 누적 리스트 -------------------
-st.markdown("---")
-st.subheader("📊 2) 누적 리스트 관리")
+    # 메모 컬럼 추가
+    df_match["메모"] = ""
 
-excel_master = load_cumulative(EXCEL_MASTER_PATH, ["아이디", "전화번호"])
-filtered_master = load_cumulative(FILTERED_MASTER_PATH, ["아이디", "전화번호", "메모"])
+    # 결과 저장
+    df_excel.to_csv("left_storage.csv", index=False, encoding="utf-8-sig")
+    df_match.to_csv("right_storage.csv", index=False, encoding="utf-8-sig")
 
-left, right = st.columns(2)
+    st.success("필터링 완료!")
 
-with left:
-    st.markdown(f"### 📂 엑셀 전체 누적 리스트 (총 {len(excel_master)}건)")
-    st.dataframe(excel_master, use_container_width=True)
+# ===============================
+# 누적 리스트 보여주기
+# ===============================
+st.subheader("📚 2) 누적 리스트 관리")
 
-with right:
-    st.markdown(f"### 🎯 최적 매칭 누적 리스트 (총 {len(filtered_master)}건)")
-    editable_filtered = st.data_editor(
-        filtered_master,
-        column_config={
-            "메모": st.column_config.TextColumn("메모 입력"),
-        },
-        disabled=["아이디", "전화번호"],
-        use_container_width=True,
-        key="filtered_editor"
-    )
+col_left, col_right = st.columns(2)
 
-    if not editable_filtered.equals(filtered_master):
-        editable_filtered.to_csv(FILTERED_MASTER_PATH, index=False, encoding="utf-8-sig")
-        st.toast("변경사항 저장 완료 💾")
+with col_left:
+    st.write("📁 엑셀 전체 누적 리스트")
+    if os.path.exists("left_storage.csv"):
+        left_df = pd.read_csv("left_storage.csv")
+        st.dataframe(left_df, use_container_width=True)
+
+with col_right:
+    st.write("🎯 최적 매칭 누적 리스트")
+    if os.path.exists("right_storage.csv"):
+        right_df = pd.read_csv("right_storage.csv")
+        edited = st.data_editor(right_df, use_container_width=True)
+        edited.to_csv("right_storage.csv", index=False, encoding="utf-8-sig")
+
+# ===============================
+# 초기화 버튼
+# ===============================
+if st.button("🧹 전체 데이터 초기화"):
+    if os.path.exists("left_storage.csv"):
+        os.remove("left_storage.csv")
+    if os.path.exists("right_storage.csv"):
+        os.remove("right_storage.csv")
+    st.success("초기화 완료! 새롭게 진행하세요.")
